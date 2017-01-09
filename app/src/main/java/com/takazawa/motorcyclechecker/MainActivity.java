@@ -1,21 +1,47 @@
 package com.takazawa.motorcyclechecker;
 
+import android.*;
+import android.Manifest;
 import android.content.Intent;
+import android.content.pm.PackageManager;
+import android.location.Location;
+import android.location.LocationListener;
+import android.location.LocationManager;
+import android.location.LocationProvider;
 import android.os.Bundle;
+import android.provider.Settings;
 import android.support.design.widget.FloatingActionButton;
 import android.support.design.widget.NavigationView;
 import android.support.design.widget.Snackbar;
+import android.support.v4.app.ActivityCompat;
 import android.support.v4.view.GravityCompat;
 import android.support.v4.widget.DrawerLayout;
 import android.support.v7.app.ActionBarDrawerToggle;
 import android.support.v7.app.AppCompatActivity;
 import android.support.v7.widget.Toolbar;
+import android.util.Log;
 import android.view.Menu;
 import android.view.MenuItem;
 import android.view.View;
+import android.widget.Toast;
+
+import com.google.android.gms.maps.CameraUpdateFactory;
+import com.google.android.gms.maps.GoogleMap;
+import com.google.android.gms.maps.OnMapReadyCallback;
+import com.google.android.gms.maps.SupportMapFragment;
+import com.google.android.gms.maps.model.LatLng;
+import com.google.android.gms.maps.model.MarkerOptions;
+import com.google.android.gms.maps.model.PolylineOptions;
 
 public class MainActivity extends AppCompatActivity
-        implements NavigationView.OnNavigationItemSelectedListener {
+        implements NavigationView.OnNavigationItemSelectedListener, OnMapReadyCallback, LocationListener {
+
+
+    private static final String TAG = MainActivity.class.getName();
+
+    private GoogleMap mMap;
+    private LocationManager mLocationManager;
+    private LatLng mLastLatLng;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -41,6 +67,55 @@ public class MainActivity extends AppCompatActivity
 
         NavigationView navigationView = (NavigationView) findViewById(R.id.nav_view);
         navigationView.setNavigationItemSelectedListener(this);
+
+
+        SupportMapFragment mapFragment = (SupportMapFragment) getSupportFragmentManager()
+                .findFragmentById(R.id.map);
+        mapFragment.getMapAsync(this);
+
+        // LocationManager インスタンス生成
+        mLocationManager = (LocationManager) getSystemService(LOCATION_SERVICE);
+
+        if (checkSelfPermission()) {
+            ActivityCompat.requestPermissions(this, new String[]{android.Manifest.permission.ACCESS_FINE_LOCATION,}, 1000);
+        } else {
+            locationStart();
+        }
+    }
+
+    private boolean checkSelfPermission() {
+        return ActivityCompat.checkSelfPermission(this, android.Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED
+                && ActivityCompat.checkSelfPermission(this, android.Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED;
+    }
+
+    @Override
+    public void onMapReady(GoogleMap googleMap) {
+
+        Log.d(TAG, "onMapReady");
+        mMap = googleMap;
+
+        if(mLocationManager.isProviderEnabled(LocationManager.GPS_PROVIDER)) {
+            Log.d(TAG, "onMapReady checkSelfPermisson");
+            Location location = mLocationManager.getLastKnownLocation("gps");
+            LatLng nowPlace = new LatLng(location.getLatitude(), location.getLongitude());
+            mMap.addMarker(new MarkerOptions().position(nowPlace).title("今ここ"));
+            //mMap.moveCamera(CameraUpdateFactory.newLatLng(nowPlace));
+            mMap.moveCamera(CameraUpdateFactory.newLatLngZoom(nowPlace, 13));
+        }
+
+//        // Add a marker in Sydney and move the camera
+//        // 現在地に移動
+//        //LocationManagerの取得
+//        LocationManager locationManager = (LocationManager)this.getSystemService(Context.LOCATION_SERVICE);
+//        //GPSから現在地の情報を取得
+//        //Location myLocate = locationManager.getLastKnownLocation("gps");
+//
+//        LatLng sydney = new LatLng(-34, 151);
+//        mMap.addMarker(new MarkerOptions().position(sydney).title("Marker in Sydney"));
+//        mMap.moveCamera(CameraUpdateFactory.newLatLng(sydney));
+
+
+
     }
 
     @Override
@@ -98,5 +173,92 @@ public class MainActivity extends AppCompatActivity
         DrawerLayout drawer = (DrawerLayout) findViewById(R.id.drawer_layout);
         drawer.closeDrawer(GravityCompat.START);
         return true;
+    }
+
+    @Override
+    public void onLocationChanged(Location location) {
+
+        Log.d(TAG, "onLocationChanged");
+        LatLng nowPlace = new LatLng(location.getLatitude(), location.getLongitude());
+        //mMap.addMarker(new MarkerOptions().position(nowPlace).title("今ここ"));
+        //mMap.moveCamera(CameraUpdateFactory.newLatLng(nowPlace));
+        mMap.moveCamera(CameraUpdateFactory.newLatLngZoom(nowPlace, 13));
+
+        PolylineOptions rectOptions = new PolylineOptions();
+        if (mLastLatLng != null) rectOptions.add(mLastLatLng);
+        rectOptions.add(new LatLng(location.getLatitude(), location.getLongitude())); // Closes the polyline.
+
+        mMap.addPolyline(rectOptions);
+
+        mLastLatLng = nowPlace;
+        Log.d(TAG, mMap.getMaxZoomLevel() + " " + mMap.getMinZoomLevel());
+    }
+
+
+    private void locationStart(){
+        Log.d(TAG,"locationStart()");
+
+        final boolean gpsEnabled = mLocationManager.isProviderEnabled(LocationManager.GPS_PROVIDER);
+        if (!gpsEnabled) {
+            // GPSを設定するように促す
+            Intent settingsIntent = new Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS);
+            startActivity(settingsIntent);
+            Log.d(TAG, "gpsEnable, startActivity");
+        } else {
+            Log.d(TAG, "gpsEnabled");
+        }
+
+        if (checkSelfPermission()) {
+            ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.ACCESS_FINE_LOCATION,}, 1000);
+
+            Log.d(TAG, "checkSelfPermission false");
+            return;
+        }
+
+        mLocationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER, 1000, 50, this);
+    }
+
+    // 結果の受け取り
+    @Override
+    public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
+        if (requestCode == 1000) {
+            // 使用が許可された
+            if (grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                Log.d(TAG,"checkSelfPermission true");
+
+                locationStart();
+                return;
+
+            } else {
+                // それでも拒否された時の対応
+                Toast toast = Toast.makeText(this, "これ以上なにもできません", Toast.LENGTH_SHORT);
+                toast.show();
+            }
+        }
+    }
+
+    @Override
+    public void onStatusChanged(String provider, int status, Bundle extras) {
+        switch (status) {
+            case LocationProvider.AVAILABLE:
+                Log.d(TAG, "LocationProvider.AVAILABLE");
+                break;
+            case LocationProvider.OUT_OF_SERVICE:
+                Log.d(TAG, "LocationProvider.OUT_OF_SERVICE");
+                break;
+            case LocationProvider.TEMPORARILY_UNAVAILABLE:
+                Log.d(TAG, "LocationProvider.TEMPORARILY_UNAVAILABLE");
+                break;
+        }
+    }
+
+    @Override
+    public void onProviderEnabled(String s) {
+
+    }
+
+    @Override
+    public void onProviderDisabled(String s) {
+
     }
 }
