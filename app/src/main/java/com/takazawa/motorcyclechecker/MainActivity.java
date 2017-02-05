@@ -10,6 +10,7 @@ import android.location.LocationManager;
 import android.location.LocationProvider;
 import android.os.Bundle;
 import android.provider.Settings;
+import android.support.annotation.NonNull;
 import android.support.design.widget.FloatingActionButton;
 import android.support.design.widget.NavigationView;
 import android.support.design.widget.Snackbar;
@@ -23,6 +24,7 @@ import android.util.Log;
 import android.view.Menu;
 import android.view.MenuItem;
 import android.view.View;
+import android.widget.TextView;
 import android.widget.Toast;
 
 import com.google.android.gms.maps.CameraUpdateFactory;
@@ -32,6 +34,8 @@ import com.google.android.gms.maps.SupportMapFragment;
 import com.google.android.gms.maps.model.LatLng;
 import com.google.android.gms.maps.model.MarkerOptions;
 import com.google.android.gms.maps.model.PolylineOptions;
+import com.google.firebase.auth.FirebaseAuth;
+import com.google.firebase.auth.FirebaseUser;
 
 public class MainActivity extends AppCompatActivity
         implements NavigationView.OnNavigationItemSelectedListener, OnMapReadyCallback, LocationListener {
@@ -42,6 +46,12 @@ public class MainActivity extends AppCompatActivity
     private GoogleMap mMap;
     private LocationManager mLocationManager;
     private LatLng mLastLatLng;
+    private TextView mMyId;
+
+    // [START declare_auth]
+    private FirebaseAuth mAuth;
+    // [START declare_auth_listener]
+    private FirebaseAuth.AuthStateListener mAuthListener;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -67,6 +77,17 @@ public class MainActivity extends AppCompatActivity
 
         NavigationView navigationView = (NavigationView) findViewById(R.id.nav_view);
         navigationView.setNavigationItemSelectedListener(this);
+        View headerView = navigationView.getHeaderView(0);
+        headerView.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                // Handle the camera action
+                Intent intent = new Intent(MainActivity.this, SignInActivity.class);
+                startActivity(intent);
+            }
+        });
+        mMyId = (TextView)headerView.findViewById(R.id.my_id);
+        mMyId.setText("test");
 
 
         SupportMapFragment mapFragment = (SupportMapFragment) getSupportFragmentManager()
@@ -81,6 +102,26 @@ public class MainActivity extends AppCompatActivity
         } else {
             locationStart();
         }
+
+        // [START initialize_auth]
+        mAuth = FirebaseAuth.getInstance();
+        // [START auth_state_listener]
+        mAuthListener = new FirebaseAuth.AuthStateListener() {
+            @Override
+            public void onAuthStateChanged(@NonNull FirebaseAuth firebaseAuth) {
+                FirebaseUser user = firebaseAuth.getCurrentUser();
+                if (user != null) {
+                    // User is signed in
+                    Log.d(TAG, "onAuthStateChanged:signed_in:" + user.getUid());
+
+                    mMyId.setText(user.getEmail());
+                } else {
+                    // User is signed out
+                    Log.d(TAG, "onAuthStateChanged:signed_out");
+                }
+                // [END_EXCLUDE]
+            }
+        };
     }
 
     private boolean checkSelfPermission() {
@@ -97,10 +138,12 @@ public class MainActivity extends AppCompatActivity
         if(mLocationManager.isProviderEnabled(LocationManager.GPS_PROVIDER)) {
             Log.d(TAG, "onMapReady checkSelfPermisson");
             Location location = mLocationManager.getLastKnownLocation("gps");
-            LatLng nowPlace = new LatLng(location.getLatitude(), location.getLongitude());
-            mMap.addMarker(new MarkerOptions().position(nowPlace).title("今ここ"));
-            //mMap.moveCamera(CameraUpdateFactory.newLatLng(nowPlace));
-            mMap.moveCamera(CameraUpdateFactory.newLatLngZoom(nowPlace, 13));
+            if (location != null) {
+                LatLng nowPlace = new LatLng(location.getLatitude(), location.getLongitude());
+                mMap.addMarker(new MarkerOptions().position(nowPlace).title("今ここ"));
+                //mMap.moveCamera(CameraUpdateFactory.newLatLng(nowPlace));
+                mMap.moveCamera(CameraUpdateFactory.newLatLngZoom(nowPlace, 13));
+            }
         }
 
 //        // Add a marker in Sydney and move the camera
@@ -156,8 +199,7 @@ public class MainActivity extends AppCompatActivity
         // Handle navigation view item clicks here.
         int id = item.getItemId();
 
-        if (id == R.id.nav_camera) {
-            // Handle the camera action
+        if (id == R.id.nav_login) {
         } else if (id == R.id.nav_gallery) {
 
         } else if (id == R.id.nav_slideshow) {
@@ -180,8 +222,8 @@ public class MainActivity extends AppCompatActivity
 
         Log.d(TAG, "onLocationChanged");
         LatLng nowPlace = new LatLng(location.getLatitude(), location.getLongitude());
-        //mMap.addMarker(new MarkerOptions().position(nowPlace).title("今ここ"));
-        //mMap.moveCamera(CameraUpdateFactory.newLatLng(nowPlace));
+        mMap.addMarker(new MarkerOptions().position(nowPlace).title("今ここ"));
+        mMap.moveCamera(CameraUpdateFactory.newLatLng(nowPlace));
         mMap.moveCamera(CameraUpdateFactory.newLatLngZoom(nowPlace, 13));
 
         PolylineOptions rectOptions = new PolylineOptions();
@@ -260,5 +302,23 @@ public class MainActivity extends AppCompatActivity
     @Override
     public void onProviderDisabled(String s) {
 
+    }
+
+
+    // [START on_start_add_listener]
+    @Override
+    public void onStart() {
+        super.onStart();
+        mAuth.addAuthStateListener(mAuthListener);
+    }
+    // [END on_start_add_listener]
+
+    // [START on_stop_remove_listener]
+    @Override
+    public void onStop() {
+        super.onStop();
+        if (mAuthListener != null) {
+            mAuth.removeAuthStateListener(mAuthListener);
+        }
     }
 }
